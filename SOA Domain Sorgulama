@@ -1,0 +1,67 @@
+#Author: Mustafa Utku SEYİTHANOĞLU
+#Web Site: mutkus.com
+#Year: 2023
+
+# Google DNS over HTTPS URL'si sabit olarak atanıyor
+$googleDoHUrl = "https://dns.google/resolve"
+
+# Kullanıcıdan domain adını alma
+$domain = Read-Host -Prompt "Lütfen sorgulamak istediğiniz domain adını girin (ör: example.com)"
+$queryType = Read-Host -Prompt "Sorgulamak istediğiniz DNS kayıt türünü girin (ör: A, AAAA, MX, CNAME, TXT, SOA, NS, PTR, DNSKEY, SRV veya ALL)"
+
+# Hata ayıklama: $googleDoHUrl doğru atanmış mı kontrol edelim
+if (-not $googleDoHUrl) {
+    Write-Host "Google DNS URL'si atanmadı! Çıkış yapılıyor."
+    exit
+}
+
+# Domain ve queryType'ı URI için uygun hale getiriyoruz
+$domainEncoded = [uri]::EscapeDataString($domain)
+
+# Tüm DNS kayıt türleri için sorgulama yapacak parametre
+$dnsTypes = @("A", "AAAA", "MX", "CNAME", "TXT", "SOA", "NS", "PTR", "DNSKEY", "SRV")
+
+# Sadece belirli bir kayıt türü sorgulanacaksa
+if ($queryType -ne "ALL") {
+    $dnsTypes = @($queryType)
+}
+
+# Her bir DNS kayıt türü için sorgulama yapıyoruz
+foreach ($type in $dnsTypes) {
+    $queryTypeEncoded = [uri]::EscapeDataString($type)
+
+    # Google DNS DoH URL'sini oluşturma
+    $dnsQueryUrl = $googleDoHUrl + "?name=" + $domainEncoded + "&type=" + $queryTypeEncoded
+
+    # Sorgu URL'sini kontrol et
+    Write-Host "Oluşturulan Sorgu URL'si: $dnsQueryUrl"
+
+    # Sorgu için gerekli HTTP başlıkları
+    $headers = @{
+        "accept" = "application/dns-json"
+    }
+
+    # Hata yakalama ile API isteği yapma
+    try {
+        # Google DNS over HTTPS API'ye GET isteği gönderme
+        $response = Invoke-WebRequest -Uri $dnsQueryUrl -Method Get -Headers $headers
+
+        # JSON formatındaki yanıtı işleme
+        $jsonResponse = $response.Content | ConvertFrom-Json
+
+        # Sonucu gösterme
+        if ($jsonResponse.Answer) {
+            Write-Host "$type Kaydı Sonuçları:"
+            foreach ($answer in $jsonResponse.Answer) {
+                Write-Host "$($answer.type) Kaydı: $($answer.data)"
+            }
+        } else {
+            Write-Host "$type kaydı bulunamadı."
+        }
+    }
+    catch {
+        # Hata durumunda hata mesajını gösterme
+        Write-Host "Hata oluştu: $_"
+        Write-Host "Sorgu URL'si: $dnsQueryUrl" # Hata durumunda URL'yi gösterme
+    }
+}
